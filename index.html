@@ -1,0 +1,686 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ImgCensor</title>
+  <link rel="icon" type="image/png" href="icon.png">
+  <link rel="apple-touch-icon" href="icon.png">
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7f8;
+      --ink: #1d2328;
+      --muted: #66727d;
+      --line: #d8e0e6;
+      --accent: #0f8f87;
+      --accent-strong: #0a6d68;
+      --danger: #b42318;
+      --edge: 12px;
+      --edge-space: 24px;
+      --mobile-edge: 10px;
+      --mobile-edge-space: 20px;
+      --mobile-top-space: 110px;
+      --shadow: 0 18px 45px rgba(18, 32, 41, 0.18);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+    }
+
+    body {
+      background:
+        linear-gradient(135deg, rgba(15, 143, 135, 0.08), transparent 34%),
+        linear-gradient(315deg, rgba(222, 98, 70, 0.07), transparent 42%),
+        var(--bg);
+      color: var(--ink);
+      overflow: hidden;
+    }
+
+    .app {
+      height: 100vh;
+      height: 100dvh;
+      min-width: 320px;
+    }
+
+    .stage {
+      position: relative;
+      display: grid;
+      place-items: center;
+      min-height: 100%;
+      padding: clamp(14px, 3vw, 32px);
+    }
+
+    .drop-zone {
+      position: absolute;
+      inset: clamp(14px, 3vw, 32px);
+      display: grid;
+      place-items: center;
+      border: 2px dashed #b7c5cd;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.54);
+      transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+      z-index: 4;
+    }
+
+    .drop-zone.is-hot {
+      border-color: var(--accent);
+      background: rgba(15, 143, 135, 0.1);
+      transform: scale(0.996);
+    }
+
+    .drop-copy {
+      display: grid;
+      gap: 14px;
+      justify-items: center;
+      max-width: min(520px, calc(100vw - 56px));
+      padding: 28px;
+      text-align: center;
+    }
+
+    .drop-copy strong {
+      font-size: clamp(1.35rem, 3vw, 2rem);
+      line-height: 1.1;
+    }
+
+    .drop-copy span {
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .browse {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 40px;
+      padding: 0 15px;
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      background: var(--accent);
+      color: #fff;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .browse:focus-visible,
+    .toolbar button:focus-visible,
+    .toolbar input:focus-visible {
+      outline: 3px solid rgba(15, 143, 135, 0.3);
+      outline-offset: 2px;
+    }
+
+    .canvas-wrap {
+      position: relative;
+      display: none;
+      max-width: 100%;
+      max-height: 100%;
+      box-shadow: var(--shadow);
+      background:
+        linear-gradient(45deg, #e9eef2 25%, transparent 25%),
+        linear-gradient(-45deg, #e9eef2 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #e9eef2 75%),
+        linear-gradient(-45deg, transparent 75%, #e9eef2 75%);
+      background-color: #fff;
+      background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+      background-size: 20px 20px;
+      border-radius: 6px;
+      overflow: hidden;
+      touch-action: none;
+    }
+
+    canvas {
+      display: block;
+      max-width: min(calc(100vw - 28px), calc(100vw - 6vw));
+      max-height: calc(100vh - 132px);
+      width: auto;
+      height: auto;
+      cursor: crosshair;
+      user-select: none;
+    }
+
+    .toolbar {
+      position: absolute;
+      top: clamp(14px, 3vw, 32px);
+      right: clamp(14px, 3vw, 32px);
+      display: none;
+      align-items: center;
+      gap: 10px;
+      max-width: calc(100vw - 28px);
+      padding: 7px;
+      border: 1px solid rgba(216, 224, 230, 0.9);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: 0 12px 30px rgba(18, 32, 41, 0.12);
+      backdrop-filter: blur(16px);
+      z-index: 6;
+    }
+
+    .tool-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 42px;
+      padding-right: 10px;
+      border-right: 1px solid var(--line);
+    }
+
+    .tool-group:last-child {
+      padding-right: 0;
+      border-right: 0;
+    }
+
+    .toolbar button {
+      display: inline-grid;
+      place-items: center;
+      width: 38px;
+      height: 38px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--ink);
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .toolbar button:hover {
+      background: rgba(15, 143, 135, 0.08);
+    }
+
+    .toolbar button[aria-pressed="true"] {
+      border-color: rgba(15, 143, 135, 0.46);
+      background: rgba(15, 143, 135, 0.14);
+      color: var(--accent-strong);
+    }
+
+    .toolbar button.command {
+      width: auto;
+      min-width: 72px;
+      padding: 0 12px;
+      font-weight: 700;
+    }
+
+    .toolbar button.save {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .toolbar button.save:hover {
+      background: var(--accent-strong);
+    }
+
+    .toolbar button.reset {
+      color: var(--danger);
+    }
+
+    .strength {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 178px;
+      color: var(--muted);
+      font-size: 0.88rem;
+      font-weight: 700;
+    }
+
+    input[type="range"] {
+      width: 105px;
+      accent-color: var(--accent);
+    }
+
+    .value {
+      display: inline-flex;
+      justify-content: flex-end;
+      min-width: 28px;
+      color: var(--ink);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .toast {
+      position: fixed;
+      top: 82px;
+      left: 50%;
+      max-width: calc(100vw - 32px);
+      padding: 10px 14px;
+      border-radius: 6px;
+      background: #1d2328;
+      color: #fff;
+      box-shadow: var(--shadow);
+      opacity: 0;
+      transform: translate(-50%, -10px);
+      transition: opacity 160ms ease, transform 160ms ease;
+      pointer-events: none;
+      z-index: 7;
+    }
+
+    .toast.is-visible {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+
+    body.has-image .drop-zone {
+      display: none;
+    }
+
+    body.has-image .canvas-wrap,
+    body.has-image .toolbar {
+      display: flex;
+    }
+
+    body.has-image .stage {
+      padding: var(--edge);
+    }
+
+    body.has-image canvas {
+      max-width: calc(100vw - var(--edge-space));
+      max-height: calc(100vh - var(--edge-space));
+      max-height: calc(100dvh - var(--edge-space));
+    }
+
+    @media (max-width: 700px) {
+      .app {
+        min-height: 0;
+      }
+
+      .stage {
+        height: 100%;
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      .toolbar {
+        position: fixed;
+        flex-wrap: wrap;
+        justify-content: center;
+        top: 0;
+        right: 0;
+        left: 0;
+        width: 100%;
+        max-width: none;
+        padding: 9px 10px;
+        border-width: 0 0 1px;
+        border-radius: 0;
+      }
+
+      .tool-group {
+        border-right: 0;
+        padding-right: 0;
+      }
+
+      .strength {
+        order: -1;
+        width: 100%;
+        justify-content: center;
+      }
+
+      body.has-image .stage {
+        padding: var(--mobile-top-space) var(--mobile-edge) var(--mobile-edge);
+      }
+
+      body.has-image canvas {
+        max-width: calc(100vw - var(--mobile-edge-space));
+        max-height: calc(100vh - var(--mobile-top-space) - var(--mobile-edge));
+        max-height: calc(100dvh - var(--mobile-top-space) - var(--mobile-edge));
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main class="app">
+    <section class="stage" id="stage">
+      <div class="toolbar" role="toolbar" aria-label="Censor tools">
+        <div class="tool-group" aria-label="Shape">
+          <button type="button" id="rectTool" aria-label="Rectangle" title="Rectangle" aria-pressed="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
+              <rect x="5" y="6" width="14" height="12" rx="1.2"></rect>
+            </svg>
+          </button>
+          <button type="button" id="ellipseTool" aria-label="Ellipse" title="Ellipse" aria-pressed="false">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
+              <ellipse cx="12" cy="12" rx="7.5" ry="5.5"></ellipse>
+            </svg>
+          </button>
+        </div>
+
+        <label class="strength">
+          Pixel
+          <input type="range" id="strength" min="5" max="100" step="1" value="20">
+          <span class="value" id="strengthValue">20</span>
+        </label>
+
+        <div class="tool-group" aria-label="Actions">
+          <button type="button" class="command reset" id="resetButton">Reset</button>
+          <button type="button" class="command save" id="saveButton">Save</button>
+        </div>
+      </div>
+
+      <div class="drop-zone" id="dropZone">
+        <div class="drop-copy">
+          <strong>Drop an image here</strong>
+          <span>Drag across the image to place rectangle or ellipse censor areas.</span>
+          <button class="browse" type="button" id="browseButton">Choose Image</button>
+        </div>
+      </div>
+
+      <div class="canvas-wrap" id="canvasWrap">
+        <canvas id="canvas" aria-label="Image editing canvas"></canvas>
+      </div>
+    </section>
+  </main>
+
+  <input id="fileInput" type="file" accept="image/*" hidden>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    const toolbar = document.querySelector(".toolbar");
+    const dropZone = document.getElementById("dropZone");
+    const browseButton = document.getElementById("browseButton");
+    const fileInput = document.getElementById("fileInput");
+    const rectTool = document.getElementById("rectTool");
+    const ellipseTool = document.getElementById("ellipseTool");
+    const strengthInput = document.getElementById("strength");
+    const strengthValue = document.getElementById("strengthValue");
+    const resetButton = document.getElementById("resetButton");
+    const saveButton = document.getElementById("saveButton");
+    const toast = document.getElementById("toast");
+
+    const originalCanvas = document.createElement("canvas");
+    const originalCtx = originalCanvas.getContext("2d");
+    const committedCanvas = document.createElement("canvas");
+    const committedCtx = committedCanvas.getContext("2d");
+    const pixelCanvas = document.createElement("canvas");
+    const pixelCtx = pixelCanvas.getContext("2d");
+
+    let currentShape = "rect";
+    let activeFileName = "imgcensor";
+    let imageLoaded = false;
+    let isDrawing = false;
+    let startPoint = null;
+    let currentPoint = null;
+    let toastTimer = 0;
+
+    browseButton.addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", (event) => {
+      const file = event.target.files && event.target.files[0];
+      if (file) {
+        loadImageFile(file);
+      }
+      fileInput.value = "";
+    });
+
+    ["dragenter", "dragover"].forEach((eventName) => {
+      document.addEventListener(eventName, (event) => {
+        event.preventDefault();
+        dropZone.classList.add("is-hot");
+      });
+    });
+
+    ["dragleave", "drop"].forEach((eventName) => {
+      document.addEventListener(eventName, (event) => {
+        event.preventDefault();
+        if (eventName === "drop") {
+          const file = [...event.dataTransfer.files].find((item) => item.type.startsWith("image/"));
+          if (file) {
+            loadImageFile(file);
+          } else {
+            showToast("Drop an image file to begin.");
+          }
+        }
+        dropZone.classList.remove("is-hot");
+      });
+    });
+
+    rectTool.addEventListener("click", () => setShape("rect"));
+    ellipseTool.addEventListener("click", () => setShape("ellipse"));
+
+    strengthInput.addEventListener("input", () => {
+      strengthValue.textContent = strengthInput.value;
+      if (isDrawing) {
+        drawPreview();
+      }
+    });
+
+    resetButton.addEventListener("click", () => {
+      if (!imageLoaded) return;
+      resetEdits();
+      showToast("Image reset.");
+    });
+
+    saveButton.addEventListener("click", () => {
+      if (!imageLoaded) return;
+      const link = document.createElement("a");
+      link.download = `${activeFileName}-censored.png`;
+      link.href = committedCanvas.toDataURL("image/png");
+      link.click();
+    });
+
+    canvas.addEventListener("pointerdown", (event) => {
+      if (!imageLoaded || event.button !== 0) return;
+      canvas.setPointerCapture(event.pointerId);
+      isDrawing = true;
+      startPoint = getCanvasPoint(event);
+      currentPoint = startPoint;
+      drawPreview();
+    });
+
+    canvas.addEventListener("pointermove", (event) => {
+      if (!isDrawing) return;
+      currentPoint = getCanvasPoint(event);
+      drawPreview();
+    });
+
+    canvas.addEventListener("pointerup", finishDraw);
+    canvas.addEventListener("pointercancel", cancelDraw);
+
+    window.addEventListener("resize", () => {
+      syncToolbarSpace();
+      if (imageLoaded && isDrawing) {
+        drawPreview();
+      }
+    });
+
+    function setShape(shape) {
+      currentShape = shape;
+      rectTool.setAttribute("aria-pressed", String(shape === "rect"));
+      ellipseTool.setAttribute("aria-pressed", String(shape === "ellipse"));
+    }
+
+    function loadImageFile(file) {
+      if (!file.type.startsWith("image/")) {
+        showToast("That file is not an image.");
+        return;
+      }
+
+      const image = new Image();
+      const url = URL.createObjectURL(file);
+      image.onload = () => {
+        URL.revokeObjectURL(url);
+        const maxPixels = 24_000_000;
+        const scale = Math.min(1, Math.sqrt(maxPixels / (image.naturalWidth * image.naturalHeight)));
+        const width = Math.max(1, Math.round(image.naturalWidth * scale));
+        const height = Math.max(1, Math.round(image.naturalHeight * scale));
+
+        resizeCanvases(width, height);
+        originalCtx.drawImage(image, 0, 0, width, height);
+        resetEdits();
+
+        activeFileName = cleanFileName(file.name.replace(/\.[^.]+$/, "")) || "imgcensor";
+        imageLoaded = true;
+        document.body.classList.add("has-image");
+        syncToolbarSpace();
+        showToast(scale < 1 ? "Large image scaled down for browser editing." : "Image ready.");
+      };
+      image.onerror = () => {
+        URL.revokeObjectURL(url);
+        showToast("Could not read that image.");
+      };
+      image.src = url;
+    }
+
+    function resizeCanvases(width, height) {
+      [canvas, originalCanvas, committedCanvas].forEach((target) => {
+        target.width = width;
+        target.height = height;
+      });
+    }
+
+    function resetEdits() {
+      committedCtx.drawImage(originalCanvas, 0, 0);
+      drawCommitted();
+    }
+
+    function syncToolbarSpace() {
+      document.documentElement.style.setProperty("--mobile-top-space", `${toolbar.offsetHeight + 10}px`);
+    }
+
+    function finishDraw(event) {
+      if (!isDrawing) return;
+      currentPoint = getCanvasPoint(event);
+      const bounds = normalizeBounds(startPoint, currentPoint);
+      isDrawing = false;
+      startPoint = null;
+      currentPoint = null;
+
+      if (bounds.width < 3 || bounds.height < 3) {
+        drawCommitted();
+        return;
+      }
+
+      applyPixelation(bounds, currentShape, Number(strengthInput.value), committedCtx);
+      drawCommitted();
+    }
+
+    function cancelDraw() {
+      if (!isDrawing) return;
+      isDrawing = false;
+      startPoint = null;
+      currentPoint = null;
+      drawCommitted();
+    }
+
+    function getCanvasPoint(event) {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      return {
+        x: clamp((event.clientX - rect.left) * scaleX, 0, canvas.width),
+        y: clamp((event.clientY - rect.top) * scaleY, 0, canvas.height)
+      };
+    }
+
+    function normalizeBounds(first, second) {
+      const x = Math.min(first.x, second.x);
+      const y = Math.min(first.y, second.y);
+      return {
+        x,
+        y,
+        width: Math.abs(first.x - second.x),
+        height: Math.abs(first.y - second.y)
+      };
+    }
+
+    function drawCommitted() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(committedCanvas, 0, 0);
+    }
+
+    function drawPreview() {
+      if (!startPoint || !currentPoint) return;
+      const bounds = normalizeBounds(startPoint, currentPoint);
+      drawCommitted();
+
+      if (bounds.width >= 3 && bounds.height >= 3) {
+        applyPixelation(bounds, currentShape, Number(strengthInput.value), ctx);
+      }
+
+      ctx.save();
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = Math.max(2, canvas.width / 520);
+      ctx.setLineDash([8, 6]);
+      ctx.shadowColor = "rgba(0, 0, 0, 0.55)";
+      ctx.shadowBlur = 4;
+      drawShapePath(ctx, bounds, currentShape);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function applyPixelation(bounds, shape, strength, targetCtx) {
+      const clipped = clipBounds(bounds);
+      if (clipped.width < 1 || clipped.height < 1) return;
+
+      const blockSize = Math.max(2, Math.round(strength));
+      const sampleWidth = Math.max(1, Math.ceil(clipped.width / blockSize));
+      const sampleHeight = Math.max(1, Math.ceil(clipped.height / blockSize));
+
+      pixelCanvas.width = sampleWidth;
+      pixelCanvas.height = sampleHeight;
+      pixelCtx.imageSmoothingEnabled = true;
+      pixelCtx.drawImage(targetCtx.canvas, clipped.x, clipped.y, clipped.width, clipped.height, 0, 0, sampleWidth, sampleHeight);
+
+      targetCtx.save();
+      drawShapePath(targetCtx, clipped, shape);
+      targetCtx.clip();
+      targetCtx.imageSmoothingEnabled = false;
+      targetCtx.drawImage(pixelCanvas, 0, 0, sampleWidth, sampleHeight, clipped.x, clipped.y, clipped.width, clipped.height);
+      targetCtx.restore();
+    }
+
+    function drawShapePath(targetCtx, bounds, shape) {
+      targetCtx.beginPath();
+      if (shape === "ellipse") {
+        targetCtx.ellipse(
+          bounds.x + bounds.width / 2,
+          bounds.y + bounds.height / 2,
+          bounds.width / 2,
+          bounds.height / 2,
+          0,
+          0,
+          Math.PI * 2
+        );
+      } else {
+        targetCtx.rect(bounds.x, bounds.y, bounds.width, bounds.height);
+      }
+    }
+
+    function clipBounds(bounds) {
+      const x = Math.max(0, Math.floor(bounds.x));
+      const y = Math.max(0, Math.floor(bounds.y));
+      const right = Math.min(canvas.width, Math.ceil(bounds.x + bounds.width));
+      const bottom = Math.min(canvas.height, Math.ceil(bounds.y + bounds.height));
+      return {
+        x,
+        y,
+        width: Math.max(0, right - x),
+        height: Math.max(0, bottom - y)
+      };
+    }
+
+    function cleanFileName(name) {
+      return name.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+    }
+
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value));
+    }
+
+    function showToast(message) {
+      toast.textContent = message;
+      toast.classList.add("is-visible");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove("is-visible"), 2200);
+    }
+  </script>
+</body>
+
+</html>
